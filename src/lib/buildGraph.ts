@@ -1,0 +1,155 @@
+import createGraph from 'ngraph.graph';
+import redditDataClient from './redditDataClient';
+
+export interface GraphNode {
+  id: string;
+  data: {
+    depth: number;
+    size: number;
+  };
+}
+
+export interface GraphLink {
+  id: string;
+  fromId: string;
+  toId: string;
+}
+
+export interface Graph {
+  addNode: (id: string, data?: any) => GraphNode;
+  addLink: (fromId: string, toId: string, data?: any) => GraphLink;
+  getNode: (id: string) => GraphNode | undefined;
+  hasNode: (id: string) => boolean;
+  getLink: (fromId: string, toId: string) => GraphLink | undefined;
+  getLinks: (nodeId: string) => GraphLink[] | undefined;
+  forEachNode: (callback: (node: GraphNode) => void) => void;
+  forEachLink: (callback: (link: GraphLink) => void) => void;
+  forEachLinkedNode: (
+    nodeId: string,
+    callback: (node: GraphNode, link: GraphLink) => void
+  ) => void;
+  on: (event: string, callback: (...args: any[]) => void) => void;
+  off: (event: string, callback: (...args: any[]) => void) => void;
+  maxDepth?: number;
+  rootId?: string;
+}
+
+export interface Progress {
+  startDownload: () => void;
+  updateLayout: (queueLength: number, currentWord: string) => void;
+  downloadError: (error: string) => void;
+  message: string;
+  working: boolean;
+}
+
+export interface GraphBuilder {
+  dispose: () => void;
+  graph: Graph;
+  onGraphReady?: () => void;
+}
+
+export default function buildGraph(
+  entryWord: string,
+  MAX_DEPTH: number,
+  progress: Progress,
+  onGraphReady?: () => void
+): GraphBuilder {
+  entryWord = entryWord && entryWord.trim();
+  if (!entryWord) {
+    throw new Error('Entry word is required');
+  }
+
+  entryWord = entryWord.toLowerCase();
+
+  let cancelled = false;
+  let pendingResponse: Promise<string[]> | null = null;
+  const graph = createGraph() as any as Graph;
+  graph.maxDepth = MAX_DEPTH;
+  graph.rootId = entryWord;
+
+  const queue: string[] = [];
+  const requestDelay = 0;
+
+  progress.startDownload();
+  startQueryConstruction();
+
+  return {
+    dispose,
+    graph,
+    onGraphReady,
+  };
+
+  function dispose() {
+    cancelled = true;
+    pendingResponse = null;
+  }
+
+  function startQueryConstruction() {
+    fetchNext(entryWord);
+  }
+
+  function loadSiblings(results: string[]) {
+    const parent = results[0];
+    let parentNode = graph.getNode(parent);
+
+    if (!parentNode) {
+      parentNode = graph.addNode(parent, {
+        depth: 0,
+        size: redditDataClient.getSize(parent),
+      });
+    }
+
+    results.forEach((other, idx) => {
+      if (idx === 0) return;
+
+      const hasOtherNode = graph.hasNode(other);
+      if (hasOtherNode) {
+        const hasOtherLink =
+          graph.getLink(other, parent) || graph.getLink(parent, other);
+        if (!hasOtherLink) {
+          graph.addLink(parent, other);
+        }
+        return;
+      }
+
+      const depth = parentNode!.data.depth + 1;
+      graph.addNode(other, { depth, size: redditDataClient.getSize(other) });
+      graph.addLink(parent, other);
+      if (depth < MAX_DEPTH) queue.push(other);
+    });
+
+    setTimeout(loadNext, requestDelay);
+  }
+
+  function loadNext() {
+    if (cancelled) return;
+
+    if (queue.length === 0) {
+      if (onGraphReady) {
+        onGraphReady();
+      }
+      return;
+    }
+
+    const nextWord = queue.shift()!;
+    fetchNext(nextWord);
+    progress.updateLayout(queue.length, nextWord);
+  }
+
+  function fetchNext(query: string) {
+    pendingResponse = redditDataClient.getRelated(query);
+    pendingResponse
+      .then((res) => onPendingReady(res, query))
+      .catch((msg) => {
+        const err = 'Failed to download ' + query + '; Message: ' + msg;
+        console.error(err);
+        progress.downloadError(err);
+        loadNext();
+      });
+  }
+
+  function onPendingReady(res: string[], query: string) {
+    if (!res || !res.length) res = [query];
+    loadSiblings(res);
+  }
+}
