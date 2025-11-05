@@ -12,24 +12,52 @@ interface TypeaheadProps {
 export default function Typeahead({
   placeholder = 'Enter subreddit name',
   onSelected,
-  query: initialQuery,
+  query: externalQuery,
 }: TypeaheadProps) {
-  const [query, setQuery] = useState(initialQuery || '');
+  const [query, setQuery] = useState(externalQuery || '');
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isMountedRef = useRef(true);
 
+  // Sync with external query changes
   useEffect(() => {
+    if (externalQuery !== query) {
+      setQuery(externalQuery);
+    }
+  }, [externalQuery]); // Only sync when external query changes
+
+  // Setup and cleanup mounted ref
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Fetch suggestions with cleanup
+  useEffect(() => {
+    let cancelled = false;
+
     if (query.length > 0) {
       redditDataClient.getSuggestion(query).then((results) => {
-        setSuggestions(results);
-        setShowSuggestions(results.length > 0);
+        // Only update state if component is still mounted and request not cancelled
+        if (!cancelled && isMountedRef.current) {
+          setSuggestions(results);
+          setShowSuggestions(results.length > 0);
+        }
+      }).catch((err) => {
+        console.error('Failed to fetch suggestions:', err);
       });
     } else {
       setSuggestions([]);
       setShowSuggestions(false);
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [query]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -78,7 +106,7 @@ export default function Typeahead({
         <div className="absolute z-50 w-full bg-white border border-border shadow-lg max-h-64 overflow-y-auto animate-fade-in">
           {suggestions.map((suggestion, index) => (
             <div
-              key={suggestion.text}
+              key={`${suggestion.text}-${index}`}
               className={`px-4 py-2 cursor-pointer transition-colors ${
                 index === selectedIndex
                   ? 'bg-highlight text-white'

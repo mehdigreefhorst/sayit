@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import createPanZoom from 'panzoom';
 import createLayout from 'ngraph.forcelayout';
 import type { Graph, GraphNode, GraphLink } from '@/lib/buildGraph';
@@ -26,11 +26,12 @@ export default function GraphVisualization({
   const layoutRef = useRef<any>(null);
   const animationFrameRef = useRef<number>();
   const nodesMapRef = useRef<Map<string, SVGGElement>>(new Map());
+  const eventHandlersRef = useRef<Map<SVGGElement, { click: (e: Event) => void; dblclick: (e: Event) => void }>>(new Map());
 
+  // Initialize panzoom once
   useEffect(() => {
     if (!sceneRef.current) return;
 
-    // Initialize panzoom
     const pz = createPanZoom(sceneRef.current, {
       maxZoom: 5,
       minZoom: 0.1,
@@ -50,63 +51,42 @@ export default function GraphVisualization({
 
     return () => {
       pz.dispose();
+      panzoomRef.current = null;
     };
   }, []);
 
-  useEffect(() => {
-    if (!graph || !nodesRef.current || !edgesRef.current) return;
+  // Stable highlight function
+  const highlightNode = useCallback((nodeId: string) => {
+    if (!graph || !sceneRef.current) return;
 
-    // Clear previous render
-    nodesMapRef.current.clear();
-    if (nodesRef.current) nodesRef.current.innerHTML = '';
-    if (edgesRef.current) edgesRef.current.innerHTML = '';
-
-    // Create physics layout
-    const layout = createLayout(graph, {
-      springLength: 20,
-      springCoeff: 0.002,
-      gravity: -1.2,
-      theta: 0.8,
-      dragCoeff: 0.02,
-      timeStep: 14,
+    // Remove all highlighting - scoped to this component only
+    const sceneElement = sceneRef.current;
+    sceneElement.querySelectorAll('.hovered').forEach((el) => {
+      el.classList.remove('hovered');
     });
 
-    layoutRef.current = layout;
-
-    // Render nodes
-    graph.forEachNode((node: GraphNode) => {
-      renderNode(node, layout);
-    });
-
-    // Start layout
-    let iterations = 0;
-    const maxIterations = 300;
-
-    function step() {
-      if (iterations < maxIterations) {
-        for (let i = 0; i < 5; i++) {
-          layout.step();
-        }
-        iterations++;
-        updateNodePositions();
-        animationFrameRef.current = requestAnimationFrame(step);
-      } else {
-        // Layout complete, render links
-        renderLinks();
-        if (onLayoutReady) onLayoutReady();
-      }
+    // Highlight selected node
+    const node = nodesMapRef.current.get(nodeId);
+    if (node) {
+      node.classList.add('hovered');
     }
 
-    step();
-
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+    // Highlight connected nodes and links
+    graph.forEachLinkedNode(nodeId, (otherNode: GraphNode, link: GraphLink) => {
+      const otherNodeUI = nodesMapRef.current.get(otherNode.id);
+      if (otherNodeUI) {
+        otherNodeUI.classList.add('hovered');
       }
-    };
+
+      const linkUI = sceneElement.querySelector(`#${CSS.escape(link.id)}`);
+      if (linkUI) {
+        linkUI.classList.add('hovered');
+      }
+    });
   }, [graph]);
 
-  const renderNode = (node: GraphNode, layout: any) => {
+  // Stable render node function
+  const renderNode = useCallback((node: GraphNode, layout: any) => {
     if (!nodesRef.current) return;
 
     const dRatio = node.data.size * 1.2;
@@ -151,37 +131,46 @@ export default function GraphVisualization({
     g.appendChild(rect);
     g.appendChild(text);
 
-    // Add click handlers
-    g.addEventListener('click', (e) => {
+    // Create and store event handlers
+    const clickHandler = (e: Event) => {
       e.stopPropagation();
       if (onNodeClick) onNodeClick(node.id);
       highlightNode(node.id);
-    });
+    };
 
-    g.addEventListener('dblclick', (e) => {
+    const dblclickHandler = (e: Event) => {
       e.stopPropagation();
       if (onNodeDoubleClick) onNodeDoubleClick(node.id);
+    };
+
+    g.addEventListener('click', clickHandler);
+    g.addEventListener('dblclick', dblclickHandler);
+
+    // Store handlers for cleanup
+    eventHandlersRef.current.set(g, {
+      click: clickHandler,
+      dblclick: dblclickHandler,
     });
 
-    nodesRef.current.appendChild(g);
+    nodesRef.current!.appendChild(g);
     nodesMapRef.current.set(node.id, g);
 
     // Pin root node
     if (node.data.depth === 0) {
       layout.pinNode(node, true);
     }
-  };
+  }, [onNodeClick, onNodeDoubleClick, highlightNode]);
 
-  const updateNodePositions = () => {
+  const updateNodePositions = useCallback(() => {
     if (!layoutRef.current) return;
 
     nodesMapRef.current.forEach((g, nodeId) => {
       const pos = layoutRef.current.getNodePosition(nodeId);
       g.setAttribute('transform', `translate(${pos.x}, ${pos.y})`);
     });
-  };
+  }, []);
 
-  const renderLinks = () => {
+  const renderLinks = useCallback(() => {
     if (!graph || !edgesRef.current || !layoutRef.current) return;
 
     graph.forEachLink((link: GraphLink) => {
@@ -213,35 +202,81 @@ export default function GraphVisualization({
         rootNode.classList.add('hovered');
       }
     }
-  };
+  }, [graph]);
 
-  const highlightNode = (nodeId: string) => {
-    if (!graph) return;
+  // Main graph rendering effect
+  useEffect(() => {
+    if (!graph || !nodesRef.current || !edgesRef.current) return;
 
-    // Remove all highlighting
-    document.querySelectorAll('.hovered').forEach((el) => {
-      el.classList.remove('hovered');
+    // Cleanup function to remove all event listeners
+    const cleanup = () => {
+      // Cancel animation frame
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = undefined;
+      }
+
+      // Remove all event listeners
+      eventHandlersRef.current.forEach((handlers, element) => {
+        element.removeEventListener('click', handlers.click);
+        element.removeEventListener('dblclick', handlers.dblclick);
+      });
+      eventHandlersRef.current.clear();
+
+      // Clear DOM
+      nodesMapRef.current.clear();
+      if (nodesRef.current) nodesRef.current.innerHTML = '';
+      if (edgesRef.current) edgesRef.current.innerHTML = '';
+
+      // Dispose layout
+      if (layoutRef.current) {
+        layoutRef.current = null;
+      }
+    };
+
+    // Clear previous render
+    cleanup();
+
+    // Create physics layout
+    const layout = createLayout(graph, {
+      springLength: 20,
+      springCoeff: 0.002,
+      gravity: -1.2,
+      theta: 0.8,
+      dragCoeff: 0.02,
+      timeStep: 14,
     });
 
-    // Highlight selected node
-    const node = nodesMapRef.current.get(nodeId);
-    if (node) {
-      node.classList.add('hovered');
+    layoutRef.current = layout;
+
+    // Render nodes
+    graph.forEachNode((node: GraphNode) => {
+      renderNode(node, layout);
+    });
+
+    // Start layout animation
+    let iterations = 0;
+    const maxIterations = 300;
+
+    function step() {
+      if (iterations < maxIterations) {
+        for (let i = 0; i < 5; i++) {
+          layout.step();
+        }
+        iterations++;
+        updateNodePositions();
+        animationFrameRef.current = requestAnimationFrame(step);
+      } else {
+        // Layout complete, render links
+        renderLinks();
+        if (onLayoutReady) onLayoutReady();
+      }
     }
 
-    // Highlight connected nodes and links
-    graph.forEachLinkedNode(nodeId, (otherNode: GraphNode, link: GraphLink) => {
-      const otherNodeUI = nodesMapRef.current.get(otherNode.id);
-      if (otherNodeUI) {
-        otherNodeUI.classList.add('hovered');
-      }
+    step();
 
-      const linkUI = document.getElementById(link.id);
-      if (linkUI) {
-        linkUI.classList.add('hovered');
-      }
-    });
-  };
+    return cleanup;
+  }, [graph, renderNode, updateNodePositions, renderLinks, onLayoutReady]);
 
   return (
     <svg

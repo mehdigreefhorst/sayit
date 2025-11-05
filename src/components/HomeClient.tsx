@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import Typeahead from '@/components/Typeahead';
 import About from '@/components/About';
-import buildGraph, { Graph } from '@/lib/buildGraph';
+import buildGraph, { Graph, GraphBuilder } from '@/lib/buildGraph';
 import Progress from '@/lib/Progress';
 
 // Dynamic import to avoid SSR issues with SVG manipulation
@@ -17,65 +17,84 @@ const GraphVisualization = dynamic(
 export default function HomeClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [query, setQuery] = useState(searchParams.get('query') || '');
+  const [query, setQuery] = useState('');
   const [graph, setGraph] = useState<Graph | null>(null);
-  const [progress, setProgress] = useState(new Progress());
+  const progressRef = useRef(new Progress());
   const [aboutVisible, setAboutVisible] = useState(false);
   const [selectedSubreddit, setSelectedSubreddit] = useState<string | null>(
     null
   );
   const [progressMessage, setProgressMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const graphBuilderRef = useRef<GraphBuilder | null>(null);
 
+  // Subscribe to progress updates (only once)
   useEffect(() => {
-    // Subscribe to progress updates
+    const progress = progressRef.current;
     const unsubscribe = progress.onChange(() => {
       setProgressMessage(progress.message);
       setIsLoading(progress.working);
     });
 
     return unsubscribe;
-  }, [progress]);
+  }, []); // Empty array - only setup once
 
-  useEffect(() => {
-    const queryParam = searchParams.get('query');
-    if (queryParam && queryParam !== query) {
-      setQuery(queryParam);
-      performSearch(queryParam);
-    } else if (queryParam) {
-      performSearch(queryParam);
-    }
-  }, []);
-
-  const performSearch = (searchQuery: string) => {
+  // Stable perform search function
+  const performSearch = useCallback((searchQuery: string) => {
     if (!searchQuery) return;
+
+    // Dispose previous builder to cancel pending requests
+    if (graphBuilderRef.current) {
+      graphBuilderRef.current.dispose();
+      graphBuilderRef.current = null;
+    }
 
     // Update URL
     router.push(`?query=${encodeURIComponent(searchQuery)}`, { scroll: false });
 
     const MAX_DEPTH = 2;
-    const newProgress = new Progress();
-    setProgress(newProgress);
+    const progress = progressRef.current;
+    progress.reset();
 
-    const builder = buildGraph(searchQuery, MAX_DEPTH, newProgress, () => {
+    const builder = buildGraph(searchQuery, MAX_DEPTH, progress, () => {
       console.log('Graph ready!');
     });
 
+    graphBuilderRef.current = builder;
     setGraph(builder.graph);
-  };
+  }, [router]);
 
-  const handleSearch = (searchQuery: string) => {
+  // Handle initial query from URL
+  useEffect(() => {
+    const queryParam = searchParams.get('query');
+    if (queryParam) {
+      setQuery(queryParam);
+      performSearch(queryParam);
+    }
+  }, [searchParams, performSearch]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (graphBuilderRef.current) {
+        graphBuilderRef.current.dispose();
+      }
+    };
+  }, []);
+
+  const handleSearch = useCallback((searchQuery: string) => {
     setQuery(searchQuery);
     performSearch(searchQuery);
-  };
+  }, [performSearch]);
 
-  const handleNodeClick = (nodeId: string) => {
+  const handleNodeClick = useCallback((nodeId: string) => {
     setSelectedSubreddit(nodeId);
-  };
+  }, []);
 
-  const handleNodeDoubleClick = (nodeId: string) => {
-    handleSearch(nodeId);
-  };
+  const handleNodeDoubleClick = useCallback((nodeId: string) => {
+    setQuery(nodeId);
+    performSearch(nodeId);
+  }, [performSearch]);
 
   return (
     <div className="relative w-full h-screen overflow-hidden">

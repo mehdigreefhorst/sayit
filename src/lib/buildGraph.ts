@@ -40,6 +40,7 @@ export interface Progress {
   downloadError: (error: string) => void;
   message: string;
   working: boolean;
+  reset: () => void;
 }
 
 export interface GraphBuilder {
@@ -63,6 +64,7 @@ export default function buildGraph(
 
   let cancelled = false;
   let pendingResponse: Promise<string[]> | null = null;
+  const pendingTimeouts: Set<ReturnType<typeof setTimeout>> = new Set();
   const graph = createGraph() as any as Graph;
   graph.maxDepth = MAX_DEPTH;
   graph.rootId = entryWord;
@@ -82,6 +84,10 @@ export default function buildGraph(
   function dispose() {
     cancelled = true;
     pendingResponse = null;
+
+    // Cancel all pending timeouts
+    pendingTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+    pendingTimeouts.clear();
   }
 
   function startQueryConstruction() {
@@ -89,6 +95,8 @@ export default function buildGraph(
   }
 
   function loadSiblings(results: string[]) {
+    if (cancelled) return; // Check if cancelled
+
     const parent = results[0];
     let parentNode = graph.getNode(parent);
 
@@ -118,7 +126,12 @@ export default function buildGraph(
       if (depth < MAX_DEPTH) queue.push(other);
     });
 
-    setTimeout(loadNext, requestDelay);
+    // Schedule next load and track timeout
+    const timeoutId = setTimeout(() => {
+      pendingTimeouts.delete(timeoutId);
+      loadNext();
+    }, requestDelay);
+    pendingTimeouts.add(timeoutId);
   }
 
   function loadNext() {
@@ -137,18 +150,28 @@ export default function buildGraph(
   }
 
   function fetchNext(query: string) {
+    if (cancelled) return; // Check before making request
+
     pendingResponse = redditDataClient.getRelated(query);
     pendingResponse
-      .then((res) => onPendingReady(res, query))
+      .then((res) => {
+        if (!cancelled) { // Only process if not cancelled
+          onPendingReady(res, query);
+        }
+      })
       .catch((msg) => {
-        const err = 'Failed to download ' + query + '; Message: ' + msg;
-        console.error(err);
-        progress.downloadError(err);
-        loadNext();
+        if (!cancelled) { // Only log error if not cancelled
+          const err = 'Failed to download ' + query + '; Message: ' + msg;
+          console.error(err);
+          progress.downloadError(err);
+          loadNext();
+        }
       });
   }
 
   function onPendingReady(res: string[], query: string) {
+    if (cancelled) return; // Check if cancelled before processing
+
     if (!res || !res.length) res = [query];
     loadSiblings(res);
   }
