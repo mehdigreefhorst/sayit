@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Integration Test - Graph Visualization</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .pass { background: #d4edda; color: #155724; }
+        .fail { background: #f8d7da; color: #721c24; }
+        .pending { background: #fff3cd; color: #856404; }
+        iframe {
+            width: 100%;
+            height: 600px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+        }
+        .instructions {
+            background: #e7f3ff;
+            padding: 15px;
+            border-left: 4px solid #2196F3;
+            margin: 15px 0;
+        }
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        .test-results {
+            font-family: monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .log-error { color: #f48771; }
+        .log-success { color: #89d185; }
+        .log-warning { color: #e7c547; }
+        .log-info { color: #75beff; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Graph Visualization Integration Test</h1>
+
+    <div class="test-section">
+        <h2>Quick Test</h2>
+        <div class="instructions">
+            <strong>Instructions:</strong>
+            <ol>
+                <li>Click "Run Test" below</li>
+                <li>Watch the iframe - a graph should build for "programming"</li>
+                <li>You should see:
+                    <ul>
+                        <li>"Downloading graph data..." message</li>
+                        <li>"Building graph..." with pending count</li>
+                        <li>"Computing layout..." with percentage</li>
+                        <li>Nodes appearing and animating</li>
+                        <li>Links/edges drawing between nodes</li>
+                    </ul>
+                </li>
+                <li>After ~3 seconds, animation should complete with a stable graph</li>
+            </ol>
+        </div>
+
+        <button onclick="runTest('programming')">Run Test</button>
+        <button onclick="runTest('javascript')">Test: JavaScript</button>
+        <button onclick="runTest('python')">Test: Python</button>
+        <button onclick="runTest('math')">Test: Math</button>
+
+        <div id="iframe-container" style="margin-top: 20px;">
+            <!-- Iframe will be inserted here -->
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test Results</h2>
+        <div id="test-status" class="status pending">
+            Click "Run Test" to begin
+        </div>
+        <div class="test-results" id="logs">
+            <div class="log-info">Waiting for test to start...</div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Manual Checks</h2>
+        <div class="instructions">
+            After running the test, verify:
+            <ul>
+                <li>✅ Graph nodes are visible and have subreddit names</li>
+                <li>✅ Nodes animate smoothly (not jittery)</li>
+                <li>✅ Lines connect related subreddits</li>
+                <li>✅ No JavaScript errors in browser console (F12)</li>
+                <li>✅ Animation completes in 2-4 seconds</li>
+                <li>✅ Can click and drag to pan</li>
+                <li>✅ Can scroll to zoom</li>
+                <li>✅ Click on a node highlights it and shows preview</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const logs = [];
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            logs.push({message, type, timestamp});
+            updateLogDisplay();
+        }
+
+        function updateLogDisplay() {
+            const logsEl = document.getElementById('logs');
+            logsEl.innerHTML = logs.map(l =>
+                `<div class="log-${l.type}">[${l.timestamp}] ${l.message}</div>`
+            ).join('');
+            logsEl.scrollTop = logsEl.scrollHeight;
+        }
+
+        function updateStatus(message, type) {
+            const statusEl = document.getElementById('test-status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+
+        function runTest(subreddit) {
+            logs.length = 0;
+            log(`Starting test with subreddit: ${subreddit}`, 'info');
+            updateStatus('Test in progress...', 'pending');
+
+            // Clear and create new iframe
+            const container = document.getElementById('iframe-container');
+            container.innerHTML = `<iframe src="/?query=${subreddit}" id="test-iframe"></iframe>`;
+
+            log('Loading graph visualization...', 'info');
+
+            // Set timeout to check results
+            let checksRun = 0;
+            const checkInterval = setInterval(() => {
+                checksRun++;
+
+                if (checksRun === 1) {
+                    log('Checking if page loaded...', 'info');
+                }
+                if (checksRun === 10) {
+                    log('Graph should be building by now...', 'info');
+                }
+                if (checksRun === 30) {
+                    log('Layout computation should be in progress...', 'info');
+                }
+                if (checksRun === 50) {
+                    log('Animation should be completing...', 'info');
+                }
+
+                if (checksRun >= 80) {
+                    clearInterval(checkInterval);
+                    finishTest();
+                }
+            }, 100);
+        }
+
+        function finishTest() {
+            log('Test sequence completed', 'success');
+            updateStatus('Test Complete - Review iframe above and manual checks below', 'pass');
+            log('---', 'info');
+            log('If you see a graph with nodes and connections, TEST PASSED ✅', 'success');
+            log('If the page is stuck on "Computing...", TEST FAILED ❌', 'error');
+            log('Check browser console (F12) for any errors', 'warning');
+        }
+
+        // Initialize
+        log('Test page loaded', 'success');
+        log('Ready to run integration test', 'info');
+    </script>
+</body>
+</html>
