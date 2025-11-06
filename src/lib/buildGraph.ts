@@ -38,6 +38,7 @@ export interface Progress {
   startDownload: () => void;
   updateLayout: (queueLength: number, currentWord: string) => void;
   downloadError: (error: string) => void;
+  startLayout: () => void;
   message: string;
   working: boolean;
   reset: () => void;
@@ -138,8 +139,9 @@ export default function buildGraph(
     if (cancelled) return;
 
     if (queue.length === 0) {
+      progress.startLayout();
       if (onGraphReady) {
-        onGraphReady();
+        setTimeout(() => onGraphReady(), 10);
       }
       return;
     }

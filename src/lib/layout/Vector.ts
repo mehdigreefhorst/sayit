@@ -1,4 +1,4 @@
-export default class Vector {
+class Vector {
   x: number;
   y: number;
 
@@ -35,3 +35,6 @@ export default class Vector {
     return Math.sqrt(dx * dx + dy * dy);
   }
 }
+
+export { Vector };
+export default Vector;

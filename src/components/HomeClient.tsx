@@ -101,6 +101,7 @@ export default function HomeClient() {
       {/* Graph Visualization */}
       <GraphVisualization
         graph={graph}
+        progress={progressRef.current}
         onNodeClick={handleNodeClick}
         onNodeDoubleClick={handleNodeDoubleClick}
       />
@@ -159,7 +160,7 @@ export default function HomeClient() {
           about
         </a>
         <a
-          href="https://github.com/anvaka/sayit"
+          href="https://github.com/mehdigreefhorst/sayit"
           target="_blank"
           rel="noopener noreferrer"
           className="bg-white/90 backdrop-blur-sm text-xs px-2 py-1.5 text-secondary hover:text-highlight hover:border-b border-highlight transition-colors font-bold"

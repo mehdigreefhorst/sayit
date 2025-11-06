@@ -1,7 +1,7 @@
 import createFakeLayout from './layout/boidLayout';
 import createInterpolateLayout from './createInterpolateLayout';
 import removeOverlaps from './layout/removeOverlaps';
-import Rect from './layout/Rect';
+import Rect from './layout/Rect.ts';
 
 let eventify = require('ngraph.events');
 

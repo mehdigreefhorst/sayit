@@ -2,21 +2,22 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import createPanZoom from 'panzoom';
-import createLayout from 'ngraph.forcelayout';
+import createAggregateLayout from '@/lib/aggregateLayout';
 import type { Graph, GraphNode, GraphLink } from '@/lib/buildGraph';
+import Progress from '@/lib/Progress';
 
 interface GraphVisualizationProps {
   graph: Graph | null;
+  progress: Progress;
   onNodeClick?: (nodeId: string) => void;
   onNodeDoubleClick?: (nodeId: string) => void;
-  onLayoutReady?: () => void;
 }
 
 export default function GraphVisualization({
   graph,
+  progress,
   onNodeClick,
   onNodeDoubleClick,
-  onLayoutReady,
 }: GraphVisualizationProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const sceneRef = useRef<SVGGElement>(null);
@@ -26,7 +27,9 @@ export default function GraphVisualization({
   const layoutRef = useRef<any>(null);
   const animationFrameRef = useRef<number>();
   const nodesMapRef = useRef<Map<string, SVGGElement>>(new Map());
+  const nodeAttributesRef = useRef<Map<string, any>>(new Map());
   const eventHandlersRef = useRef<Map<SVGGElement, { click: (e: Event) => void; dblclick: (e: Event) => void }>>(new Map());
+  const graphReadyRef = useRef(false);
 
   // Initialize panzoom once
   useEffect(() => {
@@ -55,23 +58,46 @@ export default function GraphVisualization({
     };
   }, []);
 
-  // Stable highlight function
+  const measureText = useCallback((text: string, fontSize: number) => {
+    const charWidth = fontSize * 0.6;
+    const totalWidth = text.length * charWidth;
+    const spaceWidth = fontSize * 0.3;
+    return { totalWidth, spaceWidth };
+  }, []);
+
+  const getNodeUIAttributes = useCallback((nodeId: string, dRatio: number) => {
+    const fontSize = 24 * dRatio + 12;
+    const size = measureText(nodeId, fontSize);
+    const width = size.totalWidth + size.spaceWidth * 6;
+    const height = fontSize * 1.6;
+
+    return {
+      fontSize,
+      width,
+      height,
+      x: -width / 2,
+      y: -height / 2,
+      rx: 15 * dRatio + 2,
+      ry: 15 * dRatio + 2,
+      px: -width / 2 + size.spaceWidth * 3,
+      py: -height / 2 + fontSize * 1.1,
+      strokeWidth: 4 * dRatio + 1
+    };
+  }, [measureText]);
+
   const highlightNode = useCallback((nodeId: string) => {
     if (!graph || !sceneRef.current) return;
 
-    // Remove all highlighting - scoped to this component only
     const sceneElement = sceneRef.current;
     sceneElement.querySelectorAll('.hovered').forEach((el) => {
       el.classList.remove('hovered');
     });
 
-    // Highlight selected node
     const node = nodesMapRef.current.get(nodeId);
     if (node) {
       node.classList.add('hovered');
     }
 
-    // Highlight connected nodes and links
     graph.forEachLinkedNode(nodeId, (otherNode: GraphNode, link: GraphLink) => {
       const otherNodeUI = nodesMapRef.current.get(otherNode.id);
       if (otherNodeUI) {
@@ -85,21 +111,21 @@ export default function GraphVisualization({
     });
   }, [graph]);
 
-  // Stable render node function
-  const renderNode = useCallback((node: GraphNode, layout: any) => {
-    if (!nodesRef.current) return;
+  const addNode = useCallback((node: GraphNode) => {
+    if (!nodesRef.current || !layoutRef.current) return;
 
     const dRatio = node.data.size * 1.2;
     const fontSize = 24 * dRatio + 12;
     const textContent = node.id;
 
-    // Measure text (approximate)
-    const charWidth = fontSize * 0.6;
-    const textWidth = textContent.length * charWidth;
-    const width = textWidth + fontSize * 2;
-    const height = fontSize * 1.6;
+    const pos = layoutRef.current.getNodePosition(node.id);
+    if (node.data.depth === 0) {
+      layoutRef.current.pinNode(node);
+    }
 
-    const pos = layout.getNodePosition(node.id);
+    const uiAttributes = getNodeUIAttributes(node.id, dRatio);
+    layoutRef.current.addNode(node.id, uiAttributes);
+    nodeAttributesRef.current.set(node.id, uiAttributes);
 
     // Create group
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -109,21 +135,20 @@ export default function GraphVisualization({
 
     // Create rect
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    rect.setAttribute('x', String(-width / 2));
-    rect.setAttribute('y', String(-height / 2));
-    rect.setAttribute('width', String(width));
-    rect.setAttribute('height', String(height));
-    rect.setAttribute('rx', String(15 * dRatio + 2));
-    rect.setAttribute('ry', String(15 * dRatio + 2));
+    rect.setAttribute('x', String(uiAttributes.x));
+    rect.setAttribute('y', String(uiAttributes.y));
+    rect.setAttribute('width', String(uiAttributes.width));
+    rect.setAttribute('height', String(uiAttributes.height));
+    rect.setAttribute('rx', String(uiAttributes.rx));
+    rect.setAttribute('ry', String(uiAttributes.ry));
     rect.setAttribute('fill', 'white');
     rect.setAttribute('stroke', '#aaa');
-    rect.setAttribute('stroke-width', String(4 * dRatio + 1));
+    rect.setAttribute('stroke-width', String(uiAttributes.strokeWidth));
 
     // Create text
     const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', '0');
-    text.setAttribute('y', String(fontSize * 0.35));
-    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('x', String(uiAttributes.px - uiAttributes.x));
+    text.setAttribute('y', String(uiAttributes.py - uiAttributes.y));
     text.setAttribute('font-size', String(fontSize));
     text.setAttribute('fill', '#2c3e50');
     text.textContent = textContent;
@@ -131,7 +156,6 @@ export default function GraphVisualization({
     g.appendChild(rect);
     g.appendChild(text);
 
-    // Create and store event handlers
     const clickHandler = (e: Event) => {
       e.stopPropagation();
       if (onNodeClick) onNodeClick(node.id);
@@ -146,20 +170,14 @@ export default function GraphVisualization({
     g.addEventListener('click', clickHandler);
     g.addEventListener('dblclick', dblclickHandler);
 
-    // Store handlers for cleanup
     eventHandlersRef.current.set(g, {
       click: clickHandler,
       dblclick: dblclickHandler,
     });
 
-    nodesRef.current!.appendChild(g);
+    nodesRef.current.appendChild(g);
     nodesMapRef.current.set(node.id, g);
-
-    // Pin root node
-    if (node.data.depth === 0) {
-      layout.pinNode(node, true);
-    }
-  }, [onNodeClick, onNodeDoubleClick, highlightNode]);
+  }, [onNodeClick, onNodeDoubleClick, highlightNode, getNodeUIAttributes]);
 
   const updateNodePositions = useCallback(() => {
     if (!layoutRef.current) return;
@@ -170,17 +188,16 @@ export default function GraphVisualization({
     });
   }, []);
 
-  const renderLinks = useCallback(() => {
+  const drawLinks = useCallback(() => {
     if (!graph || !edgesRef.current || !layoutRef.current) return;
+
+    progress.done();
 
     graph.forEachLink((link: GraphLink) => {
       const fromPos = layoutRef.current.getNodePosition(link.fromId);
       const toPos = layoutRef.current.getNodePosition(link.toId);
 
-      const path = document.createElementNS(
-        'http://www.w3.org/2000/svg',
-        'path'
-      );
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', `M${fromPos.x},${fromPos.y} L${toPos.x},${toPos.y}`);
       path.setAttribute('stroke', '#ccc');
       path.setAttribute('stroke-width', '2');
@@ -189,94 +206,119 @@ export default function GraphVisualization({
 
       edgesRef.current!.appendChild(path);
 
-      // Highlight root connections
       if (link.fromId === graph.rootId || link.toId === graph.rootId) {
         path.classList.add('hovered');
       }
     });
 
-    // Highlight root node
     if (graph.rootId) {
       const rootNode = nodesMapRef.current.get(graph.rootId);
       if (rootNode) {
         rootNode.classList.add('hovered');
       }
     }
-  }, [graph]);
+  }, [graph, progress]);
+
+  const onGraphReady = useCallback(() => {
+    if (graphReadyRef.current || !layoutRef.current) return;
+    graphReadyRef.current = true;
+    layoutRef.current.setGraphReady();
+    progress.startLayout();
+  }, [progress]);
+
+  // Listen for graph ready event from buildGraph
+  useEffect(() => {
+    if (!graph) return;
+
+    // The graph emits a 'graphReady' event when all data is loaded
+    const handleGraphReady = () => {
+      onGraphReady();
+    };
+
+    // Use a simple polling approach since we can't easily hook into the graph events
+    const checkInterval = setInterval(() => {
+      if (graph && !graphReadyRef.current) {
+        // Assume graph is ready after a short delay
+        onGraphReady();
+        clearInterval(checkInterval);
+      }
+    }, 100);
+
+    return () => {
+      clearInterval(checkInterval);
+    };
+  }, [graph, onGraphReady]);
 
   // Main graph rendering effect
   useEffect(() => {
     if (!graph || !nodesRef.current || !edgesRef.current) return;
 
-    // Cleanup function to remove all event listeners
     const cleanup = () => {
-      // Cancel animation frame
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = undefined;
       }
 
-      // Remove all event listeners
       eventHandlersRef.current.forEach((handlers, element) => {
         element.removeEventListener('click', handlers.click);
         element.removeEventListener('dblclick', handlers.dblclick);
       });
       eventHandlersRef.current.clear();
 
-      // Clear DOM
       nodesMapRef.current.clear();
+      nodeAttributesRef.current.clear();
       if (nodesRef.current) nodesRef.current.innerHTML = '';
       if (edgesRef.current) edgesRef.current.innerHTML = '';
 
-      // Dispose layout
       if (layoutRef.current) {
         layoutRef.current = null;
       }
+
+      graphReadyRef.current = false;
     };
 
-    // Clear previous render
     cleanup();
 
-    // Create physics layout
-    const layout = createLayout(graph, {
-      springLength: 20,
-      springCoeff: 0.002,
-      gravity: -1.2,
-      theta: 0.8,
-      dragCoeff: 0.02,
-      timeStep: 14,
-    });
-
+    // Create the aggregate layout system (multi-phase)
+    const layout = createAggregateLayout(graph, progress);
     layoutRef.current = layout;
 
-    // Render nodes
+    // Listen for layout ready event
+    layout.on('ready', drawLinks);
+
+    // Add all nodes
     graph.forEachNode((node: GraphNode) => {
-      renderNode(node, layout);
+      addNode(node);
     });
 
-    // Start layout animation
-    let iterations = 0;
-    const maxIterations = 300;
-
-    function step() {
-      if (iterations < maxIterations) {
-        for (let i = 0; i < 5; i++) {
-          layout.step();
+    // Listen for new nodes being added dynamically
+    const onGraphChanged = (changes: any[]) => {
+      changes.forEach((change: any) => {
+        if (change.changeType === 'add' && change.node) {
+          addNode(change.node);
         }
-        iterations++;
+      });
+    };
+    graph.on('changed', onGraphChanged);
+
+    // Start animation loop
+    function frame() {
+      if (layoutRef.current && layoutRef.current.step()) {
         updateNodePositions();
-        animationFrameRef.current = requestAnimationFrame(step);
-      } else {
-        // Layout complete, render links
-        renderLinks();
-        if (onLayoutReady) onLayoutReady();
+        animationFrameRef.current = requestAnimationFrame(frame);
       }
     }
 
-    step();
+    animationFrameRef.current = requestAnimationFrame(frame);
 
-    return cleanup;
-  }, [graph, renderNode, updateNodePositions, renderLinks, onLayoutReady]);
+    return () => {
+      layout.off('ready', drawLinks);
+      if (graph) {
+        graph.off('changed', onGraphChanged);
+      }
+      cleanup();
+    };
+  }, [graph, progress, addNode, updateNodePositions, drawLinks]);
 
   return (
     <svg
