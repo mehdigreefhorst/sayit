@@ -121,6 +121,7 @@ export default function GraphVisualization({
     const pos = layoutRef.current.getNodePosition(node.id);
     if (node.data.depth === 0) {
       layoutRef.current.pinNode(node);
+      console.log(`[Render] Pinned root node: ${node.id}`);
     }
 
     const uiAttributes = getNodeUIAttributes(node.id, dRatio);
@@ -191,9 +192,12 @@ export default function GraphVisualization({
   const drawLinks = useCallback(() => {
     if (!graph || !edgesRef.current || !layoutRef.current) return;
 
+    console.log('[Render] Drawing links - layout animation complete!');
     progress.done();
 
+    let linkCount = 0;
     graph.forEachLink((link: GraphLink) => {
+      linkCount++;
       const fromPos = layoutRef.current.getNodePosition(link.fromId);
       const toPos = layoutRef.current.getNodePosition(link.toId);
 
@@ -217,6 +221,8 @@ export default function GraphVisualization({
         rootNode.classList.add('hovered');
       }
     }
+
+    console.log(`[Render] Finished drawing ${linkCount} links`);
   }, [graph, progress]);
 
   const onGraphReady = useCallback(() => {
@@ -280,6 +286,7 @@ export default function GraphVisualization({
     cleanup();
 
     // Create the aggregate layout system (multi-phase)
+    console.log('[Render] Creating aggregate layout system');
     const layout = createAggregateLayout(graph, progress);
     layoutRef.current = layout;
 
@@ -287,17 +294,25 @@ export default function GraphVisualization({
     layout.on('ready', drawLinks);
 
     // Add all nodes
+    let nodeCount = 0;
     graph.forEachNode((node: GraphNode) => {
       addNode(node);
+      nodeCount++;
     });
+    console.log(`[Render] Added ${nodeCount} nodes to visualization`);
 
     // Listen for new nodes being added dynamically
     const onGraphChanged = (changes: any[]) => {
+      let dynamicNodesAdded = 0;
       changes.forEach((change: any) => {
         if (change.changeType === 'add' && change.node) {
           addNode(change.node);
+          dynamicNodesAdded++;
         }
       });
+      if (dynamicNodesAdded > 0) {
+        console.log(`[Render] Dynamically added ${dynamicNodesAdded} nodes`);
+      }
     };
     graph.on('changed', onGraphChanged);
 

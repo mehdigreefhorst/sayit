@@ -42,8 +42,11 @@ export default function removeOverlaps(rectangles, options) {
     vertices.push(pair)
   })
 
+  console.log(`[Delaunay] Building triangulation for ${vertices.length} vertices`);
+
   let totalMovement = 0;
   const triangulationGraph = getDelaunayGraph(vertices)
+  console.log(`[Delaunay] Triangulation complete, graph has ${triangulationGraph._nodes ? Object.keys(triangulationGraph._nodes).length : 0} nodes`);
   triangulationGraph.forEachLink(addTriangulationLinkWeight);
 
   const mst = findMinimumSpanningTree(triangulationGraph, e => e.data)

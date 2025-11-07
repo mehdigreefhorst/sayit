@@ -61,7 +61,10 @@ export default function createAggregateLayout(graph, progress) {
 
   function step() {
     if (!isGraphReady || layoutIterations < maxLayoutIterations) {
-      phase = USE_FAKE;
+      if (phase !== USE_FAKE) {
+        console.log('[Layout] Phase 1: Boid simulation + Physics layout');
+        phase = USE_FAKE;
+      }
       let start = window.performance.now();
       fakeLayout.step();
 
@@ -70,7 +73,7 @@ export default function createAggregateLayout(graph, progress) {
         layoutIterations += 1;
       } while (window.performance.now() - start < 10)
       layoutTime += window.performance.now() - start;
-      
+
 
       if (layoutTime > maxLayoutTime) layoutIterations = maxLayoutIterations;
       const finished = Math.min(1, Math.max(layoutTime/maxLayoutTime, layoutIterations/maxLayoutIterations));
@@ -78,22 +81,27 @@ export default function createAggregateLayout(graph, progress) {
 
       progress.setLayoutCompletion(Math.round(finished * 100));
 
-      if (layoutIterations >= maxLayoutIterations) phase = REMOVE_OVERLAPS;
+      if (layoutIterations >= maxLayoutIterations) {
+        console.log('[Layout] Phase 2: Removing overlaps with Delaunay triangulation');
+        phase = REMOVE_OVERLAPS;
+      }
 
       return true;
     } else if (phase === REMOVE_OVERLAPS) {
       runOverlapsRemoval();
+      console.log('[Layout] Phase 3: Smooth interpolation');
       phase = USE_INTERPOLATE;
 
       return true;
     } else if (phase === USE_INTERPOLATE) {
       interpolateLayout.step();
       if (interpolateLayout.done()) {
+        console.log('[Layout] Phase 4: Final physics layout - Graph ready!');
         phase = USE_REAL;
         api.fire('ready', api);
       }
       return true;
-    } 
+    }
 
     return false;
   }
@@ -108,12 +116,16 @@ export default function createAggregateLayout(graph, progress) {
   function runOverlapsRemoval() {
     // TODO: Async?
     let rectangles = getRectangles();
-    let move = 0, delta = 0; 
+    console.log(`[Overlap Removal] Processing ${rectangles.size} nodes`);
+    let move = 0, delta = 0;
+    let iterations = 0;
     do {
       let newMove = removeOverlaps(rectangles);
       delta = Math.abs(newMove - move);
       move = newMove;
+      iterations++;
     } while (delta > 1);
+    console.log(`[Overlap Removal] Completed in ${iterations} iterations`);
     rectangles.forEach((rect, nodeId) => {
       physicsLayout.setNodePosition(nodeId, rect.left - rect.dx, rect.top - rect.dy);
     });

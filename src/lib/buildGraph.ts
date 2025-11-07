@@ -101,12 +101,18 @@ export default function buildGraph(
     const parent = results[0];
     let parentNode = graph.getNode(parent);
 
+    console.log(`[Graph Wave] Processing subreddit: ${parent} with ${results.length - 1} related subreddits`);
+
     if (!parentNode) {
       parentNode = graph.addNode(parent, {
         depth: 0,
         size: redditDataClient.getSize(parent),
       });
+      console.log(`[Graph] Added root node: ${parent}`);
     }
+
+    let newNodesAdded = 0;
+    let newLinksAdded = 0;
 
     results.forEach((other, idx) => {
       if (idx === 0) return;
@@ -117,6 +123,7 @@ export default function buildGraph(
           graph.getLink(other, parent) || graph.getLink(parent, other);
         if (!hasOtherLink) {
           graph.addLink(parent, other);
+          newLinksAdded++;
         }
         return;
       }
@@ -124,8 +131,12 @@ export default function buildGraph(
       const depth = parentNode!.data.depth + 1;
       graph.addNode(other, { depth, size: redditDataClient.getSize(other) });
       graph.addLink(parent, other);
+      newNodesAdded++;
+      newLinksAdded++;
       if (depth < MAX_DEPTH) queue.push(other);
     });
+
+    console.log(`[Graph Wave] Added ${newNodesAdded} new nodes, ${newLinksAdded} new links. Queue size: ${queue.length}`);
 
     // Schedule next load and track timeout
     const timeoutId = setTimeout(() => {
