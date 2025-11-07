@@ -21,6 +21,7 @@ export default function HomeClient() {
   const [graph, setGraph] = useState<Graph | null>(null);
   const progressRef = useRef(new Progress());
   const [aboutVisible, setAboutVisible] = useState(false);
+  const [selectedSubreddit, setSelectedSubreddit] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const graphBuilderRef = useRef<GraphBuilder | null>(null);
@@ -85,8 +86,7 @@ export default function HomeClient() {
   }, [performSearch]);
 
   const handleNodeClick = useCallback((nodeId: string) => {
-    // Open subreddit in new tab instead of iframe (Reddit blocks iframe embedding)
-    window.open(`https://www.reddit.com/r/${nodeId}`, '_blank', 'noopener,noreferrer');
+    setSelectedSubreddit(nodeId);
   }, []);
 
   const handleNodeDoubleClick = useCallback((nodeId: string) => {
@@ -203,6 +203,78 @@ export default function HomeClient() {
 
       {/* About Modal */}
       {aboutVisible && <About onClose={() => setAboutVisible(false)} />}
+
+      {/* Subreddit Info Panel */}
+      {selectedSubreddit && (
+        <div className="fixed right-0 top-0 w-full md:w-[400px] h-full bg-white shadow-2xl z-20 overflow-y-auto animate-slide-in">
+          <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 flex justify-between items-center">
+            <h3 className="text-lg font-semibold">r/{selectedSubreddit}</h3>
+            <button
+              onClick={() => setSelectedSubreddit(null)}
+              className="text-white hover:text-gray-300 text-2xl leading-none"
+            >
+              ×
+            </button>
+          </div>
+          <div className="p-6 space-y-4">
+            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+              <p className="text-sm text-gray-700 mb-2">
+                Click below to visit this subreddit on Reddit
+              </p>
+            </div>
+
+            <a
+              href={`https://www.reddit.com/r/${selectedSubreddit}/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg text-center transition-colors"
+            >
+              Open r/{selectedSubreddit} in New Tab →
+            </a>
+
+            <button
+              onClick={() => {
+                setQuery(selectedSubreddit);
+                performSearch(selectedSubreddit);
+                setSelectedSubreddit(null);
+              }}
+              className="block w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 px-4 rounded-lg text-center transition-colors"
+            >
+              Re-center Graph on This Subreddit
+            </button>
+
+            <div className="border-t pt-4 mt-4">
+              <h4 className="font-semibold text-gray-800 mb-2">Quick Links</h4>
+              <div className="space-y-2">
+                <a
+                  href={`https://www.reddit.com/r/${selectedSubreddit}/top/?t=week`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-blue-600 hover:underline"
+                >
+                  Top Posts This Week
+                </a>
+                <a
+                  href={`https://www.reddit.com/r/${selectedSubreddit}/new/`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-blue-600 hover:underline"
+                >
+                  New Posts
+                </a>
+                <a
+                  href={`https://www.reddit.com/r/${selectedSubreddit}/about/`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-blue-600 hover:underline"
+                >
+                  Subreddit Info
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -79,8 +79,8 @@ export default function GraphVisualization({
       y: -height / 2,
       rx: 15 * dRatio + 2,
       ry: 15 * dRatio + 2,
-      px: -width / 2 + size.spaceWidth * 3,
-      py: -height / 2 + fontSize * 1.1,
+      px: 0,  // Center horizontally
+      py: fontSize * 0.35,  // Center vertically (adjusted for font baseline)
       strokeWidth: 4 * dRatio + 1
     };
   }, [measureText]);
@@ -148,10 +148,12 @@ export default function GraphVisualization({
 
     // Create text
     const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', String(uiAttributes.px - uiAttributes.x));
-    text.setAttribute('y', String(uiAttributes.py - uiAttributes.y));
+    text.setAttribute('x', String(uiAttributes.px));
+    text.setAttribute('y', String(uiAttributes.py));
     text.setAttribute('font-size', String(fontSize));
     text.setAttribute('fill', '#2c3e50');
+    text.setAttribute('text-anchor', 'middle');  // Center text horizontally
+    text.setAttribute('dominant-baseline', 'middle');  // Center text vertically
     text.textContent = textContent;
 
     g.appendChild(rect);
@@ -209,16 +211,16 @@ export default function GraphVisualization({
       // Weight ranges from ~1.0 (strongest) to ~0.1 (weakest)
       const normalizedWeight = Math.min(1.0, Math.max(0.1, weight));
 
-      // Stroke width: 1-5px based on weight
-      const strokeWidth = 1 + normalizedWeight * 4;
+      // Stroke width: 2-10px based on weight (increased from 1-5px)
+      const strokeWidth = 2 + normalizedWeight * 8;
 
-      // Color: from light gray (#e0e0e0) to dark blue (#1a5490)
-      // Using RGB interpolation
-      const lightGray = { r: 224, g: 224, b: 224 };
+      // Color: from medium gray (#b0b0b0) to dark blue (#1a5490)
+      // Using RGB interpolation (made lighter edges darker for visibility)
+      const mediumGray = { r: 176, g: 176, b: 176 };  // Darker than before
       const darkBlue = { r: 26, g: 84, b: 144 };
-      const r = Math.round(lightGray.r + (darkBlue.r - lightGray.r) * normalizedWeight);
-      const g = Math.round(lightGray.g + (darkBlue.g - lightGray.g) * normalizedWeight);
-      const b = Math.round(lightGray.b + (darkBlue.b - lightGray.b) * normalizedWeight);
+      const r = Math.round(mediumGray.r + (darkBlue.r - mediumGray.r) * normalizedWeight);
+      const g = Math.round(mediumGray.g + (darkBlue.g - mediumGray.g) * normalizedWeight);
+      const b = Math.round(mediumGray.b + (darkBlue.b - mediumGray.b) * normalizedWeight);
       const strokeColor = `rgb(${r}, ${g}, ${b})`;
 
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -227,7 +229,7 @@ export default function GraphVisualization({
       path.setAttribute('stroke-width', String(strokeWidth));
       path.setAttribute('fill', 'none');
       path.setAttribute('id', link.id);
-      path.setAttribute('opacity', String(0.3 + normalizedWeight * 0.7));
+      path.setAttribute('opacity', String(0.5 + normalizedWeight * 0.5));  // Increased minimum opacity from 0.3
 
       edgesRef.current!.appendChild(path);
 
