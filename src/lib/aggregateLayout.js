@@ -133,17 +133,18 @@ export default function createAggregateLayout(graph, progress) {
 
   function getRectangles() {
     let rects = new Map();
+    const padding = 20;  // Add 20px padding around each node to prevent overlap
     rectangles.forEach((rect, id) => {
       let pos = physicsLayout.getNodePosition(id);
       let {width, height} = rect;
       const inflatedRect = new Rect({
-        id, 
-        left: pos.x + rect.x,
-        top: pos.y + rect.y,
+        id,
+        left: pos.x + rect.x - padding,
+        top: pos.y + rect.y - padding,
         dx: rect.x,
         dy: rect.y,
-        width,
-        height,
+        width: width + padding * 2,  // Add padding to both sides
+        height: height + padding * 2,  // Add padding to top and bottom
       });
       rects.set(id, inflatedRect);
     });
