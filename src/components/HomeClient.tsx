@@ -21,9 +21,6 @@ export default function HomeClient() {
   const [graph, setGraph] = useState<Graph | null>(null);
   const progressRef = useRef(new Progress());
   const [aboutVisible, setAboutVisible] = useState(false);
-  const [selectedSubreddit, setSelectedSubreddit] = useState<string | null>(
-    null
-  );
   const [progressMessage, setProgressMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const graphBuilderRef = useRef<GraphBuilder | null>(null);
@@ -88,7 +85,8 @@ export default function HomeClient() {
   }, [performSearch]);
 
   const handleNodeClick = useCallback((nodeId: string) => {
-    setSelectedSubreddit(nodeId);
+    // Open subreddit in new tab instead of iframe (Reddit blocks iframe embedding)
+    window.open(`https://www.reddit.com/r/${nodeId}`, '_blank', 'noopener,noreferrer');
   }, []);
 
   const handleNodeDoubleClick = useCallback((nodeId: string) => {
@@ -205,28 +203,6 @@ export default function HomeClient() {
 
       {/* About Modal */}
       {aboutVisible && <About onClose={() => setAboutVisible(false)} />}
-
-      {/* Subreddit Preview Panel */}
-      {selectedSubreddit && (
-        <div className="fixed right-0 top-0 w-full md:w-[400px] h-full bg-white shadow-2xl z-20 overflow-y-auto animate-slide-in">
-          <div className="sticky top-0 bg-gray-800 text-white p-4 flex justify-between items-center">
-            <h3 className="text-lg font-semibold">r/{selectedSubreddit}</h3>
-            <button
-              onClick={() => setSelectedSubreddit(null)}
-              className="text-white hover:text-gray-300 text-2xl leading-none"
-            >
-              ×
-            </button>
-          </div>
-          <div className="p-4">
-            <iframe
-              src={`https://www.reddit.com/r/${selectedSubreddit}/`}
-              className="w-full h-[calc(100vh-80px)] border-0"
-              title={`r/${selectedSubreddit}`}
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

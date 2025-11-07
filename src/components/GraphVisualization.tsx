@@ -201,12 +201,33 @@ export default function GraphVisualization({
       const fromPos = layoutRef.current.getNodePosition(link.fromId);
       const toPos = layoutRef.current.getNodePosition(link.toId);
 
+      // Get edge weight (default to 0.1 if not set)
+      const weight = (link as any).data?.weight || 0.1;
+
+      // Calculate visual properties based on weight
+      // Higher weight = darker color and thicker line
+      // Weight ranges from ~1.0 (strongest) to ~0.1 (weakest)
+      const normalizedWeight = Math.min(1.0, Math.max(0.1, weight));
+
+      // Stroke width: 1-5px based on weight
+      const strokeWidth = 1 + normalizedWeight * 4;
+
+      // Color: from light gray (#e0e0e0) to dark blue (#1a5490)
+      // Using RGB interpolation
+      const lightGray = { r: 224, g: 224, b: 224 };
+      const darkBlue = { r: 26, g: 84, b: 144 };
+      const r = Math.round(lightGray.r + (darkBlue.r - lightGray.r) * normalizedWeight);
+      const g = Math.round(lightGray.g + (darkBlue.g - lightGray.g) * normalizedWeight);
+      const b = Math.round(lightGray.b + (darkBlue.b - lightGray.b) * normalizedWeight);
+      const strokeColor = `rgb(${r}, ${g}, ${b})`;
+
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', `M${fromPos.x},${fromPos.y} L${toPos.x},${toPos.y}`);
-      path.setAttribute('stroke', '#ccc');
-      path.setAttribute('stroke-width', '2');
+      path.setAttribute('stroke', strokeColor);
+      path.setAttribute('stroke-width', String(strokeWidth));
       path.setAttribute('fill', 'none');
       path.setAttribute('id', link.id);
+      path.setAttribute('opacity', String(0.3 + normalizedWeight * 0.7));
 
       edgesRef.current!.appendChild(path);
 

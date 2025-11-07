@@ -117,12 +117,16 @@ export default function buildGraph(
     results.forEach((other, idx) => {
       if (idx === 0) return;
 
+      // Calculate edge weight based on position (earlier = stronger connection)
+      // Weight ranges from 1.0 (first item) to ~0.1 (last item)
+      const weight = 1.0 / idx;
+
       const hasOtherNode = graph.hasNode(other);
       if (hasOtherNode) {
         const hasOtherLink =
           graph.getLink(other, parent) || graph.getLink(parent, other);
         if (!hasOtherLink) {
-          graph.addLink(parent, other);
+          graph.addLink(parent, other, { weight });
           newLinksAdded++;
         }
         return;
@@ -130,7 +134,7 @@ export default function buildGraph(
 
       const depth = parentNode!.data.depth + 1;
       graph.addNode(other, { depth, size: redditDataClient.getSize(other) });
-      graph.addLink(parent, other);
+      graph.addLink(parent, other, { weight });
       newNodesAdded++;
       newLinksAdded++;
       if (depth < MAX_DEPTH) queue.push(other);

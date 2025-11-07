@@ -157,8 +157,8 @@ export default function createAggregateLayout(graph, progress) {
 
   function createPhysicsLayout() {
     return createLayout(graph, {
-      springLength: 20,
-      springCoeff: 0.002,
+      springLength: 150,  // Increased from 20 to 150 for better spacing
+      springCoeff: 0.0008,  // Reduced coefficient for gentler forces
       gravity: -1.2,
       theta: 0.8,
       dragCoeff: 0.02,
